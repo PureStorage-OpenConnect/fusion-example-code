@@ -13,7 +13,7 @@
     .\Connect-FAApi.ps1 -Target "10.21.204.131" -ApiToken "366a220f-c563-f660-54d0-a48532628005"
 .NOTES
     Author: mnelson@purestorage.com
-    Date: 10/23/2023
+    Origin Date: 10/23/2023
     Version: 1.1
 #>
 
@@ -159,11 +159,11 @@ do {
 } while ($continuation_token)
 
 ################ FLEET PRESETS QUERY ################
-$presetsUrl = "$baseUrl/volumes?context_names=$($VAR_RESULTS -join ',')"
+$presetsUrl = "$baseUrl/presets?context_names=$($VAR_RESULTS -join ',')"
 $presetsResponse = Invoke-RestMethod -Uri $presetsUrl -Method Get -Headers $headers -SkipCertificateCheck -ResponseHeadersVariable respHeaders $presetsResponse | ConvertTo-Json -Depth 5
 
 ################ FLEET WORKLOADS QUERY ################
-$workloadsUrl = "$baseUrl/volumes?context_names=$($VAR_RESULTS -join ',')"
+$workloadsUrl = "$baseUrl/workloads?context_names=$($VAR_RESULTS -join ',')"
 $workloadsResponse = Invoke-RestMethod -Uri $workloadsUrl -Method Get -Headers $headers -SkipCertificateCheck -ResponseHeadersVariable respHeaders
 $workloadsResponse | ConvertTo-Json -Depth 5
 

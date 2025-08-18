@@ -82,6 +82,20 @@ while True:
 print(f"Total hosts found: {len(all_hosts)}")
 print(json.dumps(all_hosts, indent=2))
 
+# Enumerate all Presets in the fleet
+print("\nEnumerating presets in the fleet:")
+presets_url = f"https://{target}/api/{latest_api_version}/presets?context_names={','.join(VAR_RESULTS)}"
+presets_response = session.get(presets_url, verify=False)
+presets_json = presets_response.json()
+print(f"Total presets found: {len(presets_json.get('items', []))}")
+
+# Enumerate all Woorkloads in the fleet
+print("\nEnumerating workloads in the fleet:")
+workloads_url = f"https://{target}/api/{latest_api_version}/workloads?context_names={','.join(VAR_RESULTS)}"
+workloads_response = session.get(workloads_url, verify=False)
+workloads_json = workloads_response.json()
+print(f"Total workloads found: {len(workloads_json.get('items', []))}")
+
 # Select a member array (not the target)
 member_array = next((name for name in VAR_RESULTS if name != target), None)
 if not member_array:
