@@ -1,0 +1,18 @@
+- name: Provision a workload given a preset
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - purestorage.flasharray
+  vars_files:
+    - constants.yml
+    - array_config.yml
+
+  tasks:
+   - name: Provision workload
+     purestorage.flasharray.purefa_workload:
+       fa_url: "{{ purefa_url }}"
+       api_token: "{{ purefa_api }}"
+       preset: "SQL"
+       context: "c7-sim700-vfa2"
+       name: "sql-cluster"
+       host: "windows-host"

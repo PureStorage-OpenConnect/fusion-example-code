@@ -1,0 +1,59 @@
+These are the Ansible scripts used in the Accelerate 2025 demo.
+
+Requirements:
+FlashArray Ansible Galaxy Collection 1.37.0 and above (https://galaxy.ansible.com/ui/repo/published/purestorage/flasharray/)
+Purity 6.10.2 and above
+
+To get started, pick an array in your fleet you would like to use as the entrypoint. We're going to point our Ansible scripts to this array to manage the fleeet. First, generate an API token on the array.
+
+Generate API Token on array
+Via GUI
+1) Login to the array with an LDAP user
+2) Settings -> Users and Policies
+3) In the top right hand corner of the "Users" table, click the "kebab menu", and click "Create API Token"
+4) Enter the name of the logged in LDAP user
+
+Via CLI
+1) Login into the CLI with an LDAP user
+2) Run the following command
+pureadmin create --api-token
+
+
+Pointing Ansible to the array
+1) Now open up constants.yml and enter the API token, and the URL to the array
+
+
+Configuring array specification
+1) The array_config.yml specifies how you want each array to be configured. Here you can set DNS, NTP servers, Syslog servers, Default protection, and Hosts
+2) To apply array_config.yml to all arrays in the fleet, simply run the Ansible playbook
+ansible-playbook configure_array.yml
+
+
+Provisiong workloads with Preset
+1) First we need to create the Preset. There are already 2 sample presets provided in this package.
+
+Upload Presets
+Via GUI
+1) Login as an LDAP user
+2) Storage -> Presets
+3) In the top right hand corner of the "Presets" table, click the "kebab menu", and click "Upload Preset"
+4) Provide both the db-prod.json and vmfs.json
+
+Via CLI
+1) Login as an LDAP user
+2) Run the following command
+purepreset workload upload --context <name-of-your-fleet> <name-of-preset>
+
+You'll then be prompted to enter the contents of the Preset. Just copy and paste the contents of the sample Presets provided.
+
+
+To start provisioning workloads with the Preset, modify provision_workload.yml to specify
+preset - The name of the Preset
+name - Name of the workload
+context - Name of the array where you would like to provision the workload
+host - Name of the host to connect to the workload once provisioned
+
+
+And run 
+ansible-playbook provision_workload.yml
+ 

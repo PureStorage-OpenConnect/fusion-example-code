@@ -1,0 +1,124 @@
+{
+    "description": "This provisions a production database",
+    "workload_type": "Oracle",
+    "parameters": [
+        {
+            "name": "db_data_count",
+            "type": "integer",
+            "metadata": {
+                "description": "Enter number of db-data volumes to provision"
+            },
+            "constraints": {
+                "integer": {
+                    "minimum": 1,
+                    "maximum": 5,
+                    "default": 2
+                }
+            }
+        },
+        {
+            "name": "db_log_count",
+            "type": "integer",
+            "metadata": {
+                "description": "Enter number of db-log volumes to provision"
+            },
+            "constraints": {
+                "integer": {
+                    "minimum": 1,
+                    "maximum": 5,
+                    "default": 1
+                }
+            }
+        },
+        {
+            "name": "billingID",
+            "type": "string",
+            "metadata": {
+                "description": "Please enter your billing-ID (e.g. ACME)"
+            },
+            "constraints": {
+                "string": {}
+            }
+        }
+    ],
+    "workload_tags": [
+        {
+            "key": "tier",
+            "value": "prod",
+            "copyable": "true",
+            "namespace": "default"
+        },
+        {
+            "key": "billingID",
+            "value": "{{ parameters.billingID }}",
+            "copyable": "true",
+            "namespace": "default"
+        }
+    ],
+    "placement_configurations": [
+        {
+            "name": "default-placement",
+            "storage_class": {
+                "name": "flasharray-x",
+                "id": "",
+                "resource_type": "storage-classes"
+            }
+        }
+    ],
+    "volume_configurations": [
+        {
+            "name": "db-data",
+            "count": "{{ parameters.db_data_count }}",
+            "provisioned_size": "1073741824",
+            "placement_configurations": [
+                "default-placement"
+            ],
+            "snapshot_configurations": [
+                "local-snaps"
+            ],
+            "periodic_replication_configurations": [
+                "remote-snaps"
+            ]
+        },
+        {
+            "name": "db-log",
+            "count": "{{ parameters.db_log_count }}",
+            "provisioned_size": "1073741824",
+            "placement_configurations": [
+                "default-placement"
+            ],
+            "snapshot_configurations": [
+                "local-snaps"
+            ]
+        }
+    ],
+    "snapshot_configurations": [
+        {
+            "name": "local-snaps",
+            "rules": [
+                {
+                    "every": "3600000",
+                    "keep_for": "604800000"
+                }
+            ]
+        }
+    ],
+    "periodic_replication_configurations": [
+        {
+            "name": "remote-snaps",
+            "remote_targets": [
+                {
+                    "name": "slcfac1",
+                    "id": "",
+                    "resource_type": "remote-arrays"
+                }
+            ],
+            "rules": [
+                {
+                    "every": "86400000",
+                    "keep_for": "2592000000"
+                }
+            ]
+        }
+    ]
+}

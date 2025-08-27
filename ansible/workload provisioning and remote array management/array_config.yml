@@ -1,0 +1,38 @@
+dns:
+  - service: "file"
+    domain: "acme.com"
+    name: 'demo-file'
+    nameservers:
+      - "8.8.8.8"
+  - service: "management"
+    domain: "dev.acme.com"
+    name: 'management'
+    nameservers:
+      - "10.7.32.53"
+
+ntp:
+  servers:
+    - "time1.acme.com"
+    - "time2.acme.com"
+    - "time3.acme.com"
+
+syslog:
+  - name: "demo-syslog"
+    address: "demosyslog.dev.acme.com"
+    port: 1000
+    protocol: "tcp"
+
+pgroupauto:
+  - name: "demo-pgroup-auto"
+    snap_frequency: 86400
+    snap_at: 3PM
+    all_for: 432000
+    per_day: 5
+
+hosts:
+  - name: "windows-host"
+    personality: ""
+    iqn: "iqn.1991-05.com.microsoft:winhost1"
+  - name: "esxi-host"
+    personality: esxi
+    iqn: "iqn.1998-01.com.vmware.iscsi:esxhost1"

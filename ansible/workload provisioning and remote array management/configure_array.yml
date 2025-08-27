@@ -1,0 +1,94 @@
+---
+- name: Ensure configuration of arrays in fleet is consistent
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - purestorage.flasharray
+  vars_files:
+    - constants.yml
+    - array_config.yml
+
+  tasks:
+   - name:  Retrieve fleet information
+     purestorage.flasharray.purefa_info:
+       gather_subset:
+         - fleet
+       fa_url: "{{ purefa_url }}"
+       api_token: "{{ purefa_api }}"
+     register: fleet_info
+
+   - name: Get fleet membership
+     ansible.builtin.set_fact:
+       fleet_name: "{{ item.key }}"
+       fleet_members: "{{ item.value.members.keys() | list }}"
+     with_dict: "{{fleet_info['purefa_info']['fleet']}}"
+
+   - name: Configure DNS
+     purestorage.flasharray.purefa_dns:
+       fa_url: "{{ purefa_url }}"
+       api_token: "{{ purefa_api }}"
+       context: "{{ item[1] }}"
+       service: "{{ item[0].service }}"
+       name: "{{ item[0].name }}"
+       domain: "{{ item[0].domain }}"
+       nameservers: "{{ item[0].nameservers }}"
+     loop: "{{ dns | product(fleet_members) | list }}"
+
+   - name: Configure NTP
+     purestorage.flasharray.purefa_ntp:
+       fa_url: "{{ purefa_url }}"
+       api_token: "{{ purefa_api }}"
+       context: "{{ item }}"
+       ntp_servers: "{{ ntp.servers }}"
+     loop: "{{ fleet_members }}"
+
+   - name: Configure syslog
+     purestorage.flasharray.purefa_syslog:
+       fa_url: "{{ purefa_url }}"
+       api_token: "{{ purefa_api }}"
+       context: "{{ item[1] }}"
+       name: "{{ item[0].name }}"
+       address: "{{ item[0].address }}"
+       port: "{{ item[0].port }}"
+       protocol: "{{ item[0].protocol }}"
+     loop: "{{ syslog | product(fleet_members) | list }}"
+
+   - name: Configure pgroup
+     purestorage.flasharray.purefa_pg:
+       fa_url: "{{ purefa_url }}"
+       api_token: "{{ purefa_api }}"
+       context: "{{ item[1] }}"
+       name: "{{ item[0].name }}"
+     loop: "{{ pgroupauto | product(fleet_members) | list }}"
+
+   - name: Configure pgroup snapshot schedule
+     purestorage.flasharray.purefa_pgsched:
+       fa_url: "{{ purefa_url }}"
+       api_token: "{{ purefa_api }}"
+       context: "{{ item[1] }}"
+       name: "{{ item[0].name }}"
+       schedule: snapshot
+       snap_frequency: "{{ item[0].snap_frequency }}"
+       snap_at: "{{ item[0].snap_at }}"
+       per_day: "{{ item[0].per_day }}"
+       all_for: "{{ item[0].all_for }}"
+     loop: "{{ pgroupauto | product(fleet_members) | list }}"     
+
+   - name: Setting default protection
+     purestorage.flasharray.purefa_default_protection:
+       fa_url: "{{ purefa_url }}"
+       api_token: "{{ purefa_api }}"
+       context: "{{ item }}"
+       name: "{{ pgroupauto | map(attribute='name') | list }}"
+     loop: "{{ fleet_members }}"     
+
+   - name: Configuring hosts
+     purestorage.flasharray.purefa_host:
+       fa_url: "{{ purefa_url }}"
+       api_token: "{{ purefa_api }}"
+       context: "{{ item[1] }}"
+       name: "{{ item[0].name }}"
+       personality: "{{ item[0].personality }}"
+       iqn: "{{ item[0].iqn }}"
+     loop: "{{ hosts | product(fleet_members) | list }}"    
+  

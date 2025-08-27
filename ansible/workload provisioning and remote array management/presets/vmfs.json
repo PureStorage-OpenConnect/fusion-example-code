@@ -1,0 +1,24 @@
+{
+    "description": "This provisions a VMFS datastore",
+    "workload_type": "VSI",
+    "placement_configurations": [
+        {
+            "name": "default-placement",
+            "storage_class": {
+                "name": "flasharray-x",
+                "id": "",
+                "resource_type": "storage-classes"
+            }
+        }
+    ],
+    "volume_configurations": [
+        {
+            "name": "datastore",
+            "count": "1",
+            "provisioned_size": "1073741824",
+            "placement_configurations": [
+                "default-placement"
+            ]
+        }
+    ]
+}
