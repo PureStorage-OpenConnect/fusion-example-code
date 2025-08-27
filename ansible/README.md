@@ -1,4 +1,4 @@
-&nbsp;&nbsp; <img src="/images/purefusion.png">
+&nbsp;&nbsp; <img src="/images/ansibleplaybook.png">
 
 ## Ansible Example Code
 
