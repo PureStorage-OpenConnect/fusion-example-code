@@ -1,59 +1,104 @@
-These are the Ansible scripts used in the Accelerate 2025 demo.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ansible/ansible/master/docs/docsite/_static/ansible-logo.png" alt="Ansible Logo" width="120"/>
+</p>
 
-Requirements:
-FlashArray Ansible Galaxy Collection 1.37.0 and above (https://galaxy.ansible.com/ui/repo/published/purestorage/flasharray/)
-Purity 6.10.2 and above
+# Accelerate 2025 Demo: Ansible Scripts
 
-To get started, pick an array in your fleet you would like to use as the entrypoint. We're going to point our Ansible scripts to this array to manage the fleeet. First, generate an API token on the array.
+These are the **Ansible scripts** used in the Accelerate 2025 demo.
 
-Generate API Token on array
-Via GUI
-1) Login to the array with an LDAP user
-2) Settings -> Users and Policies
-3) In the top right hand corner of the "Users" table, click the "kebab menu", and click "Create API Token"
-4) Enter the name of the logged in LDAP user
+---
 
-Via CLI
-1) Login into the CLI with an LDAP user
-2) Run the following command
+## Requirements
+
+- **FlashArray Ansible Galaxy Collection** `1.37.0` and above
+  [View on Ansible Galaxy](https://galaxy.ansible.com/ui/repo/published/purestorage/flasharray/)
+- **Purity** `6.10.2` and above
+
+---
+
+## Getting Started
+
+Pick an array in your fleet to use as the entrypoint.
+Point your Ansible scripts to this array to manage the fleet.
+
+### Generate API Token on Array
+
+**Via GUI:**
+
+1. Login to the array with an LDAP user
+2. Go to: `Settings → Users and Policies`
+3. In the top right of the "Users" table, click the **kebab menu** and select **Create API Token**
+4. Enter the name of the logged-in LDAP user
+
+**Via CLI:**
+
+```shell
 pureadmin create --api-token
+```
 
+---
 
-Pointing Ansible to the array
-1) Now open up constants.yml and enter the API token, and the URL to the array
+## Pointing Ansible to the Array
 
+1. Open `constants.yml`
+2. Enter the API token and the URL to the array
 
-Configuring array specification
-1) The array_config.yml specifies how you want each array to be configured. Here you can set DNS, NTP servers, Syslog servers, Default protection, and Hosts
-2) To apply array_config.yml to all arrays in the fleet, simply run the Ansible playbook
+---
+
+## Configuring Array Specification
+
+- The `array_config.yml` file specifies how you want each array to be configured:
+  - DNS
+  - NTP servers
+  - Syslog servers
+  - Default protection
+  - Hosts
+
+**To apply `array_config.yml` to all arrays in the fleet:**
+
+```shell
 ansible-playbook configure_array.yml
+```
 
+---
 
-Provisiong workloads with Preset
-1) First we need to create the Preset. There are already 2 sample presets provided in this package.
+## Provisioning Workloads with Preset
 
-Upload Presets
-Via GUI
-1) Login as an LDAP user
-2) Storage -> Presets
-3) In the top right hand corner of the "Presets" table, click the "kebab menu", and click "Upload Preset"
-4) Provide both the db-prod.json and vmfs.json
+### Upload Presets
 
-Via CLI
-1) Login as an LDAP user
-2) Run the following command
+**Via GUI:**
+
+1. Login as an LDAP user
+2. Go to: `Storage → Presets`
+3. In the top right of the "Presets" table, click the **kebab menu** and select **Upload Preset**
+4. Provide both `db-prod.json` and `vmfs.json`
+
+**Via CLI:**
+
+```shell
 purepreset workload upload --context <name-of-your-fleet> <name-of-preset>
+```
 
-You'll then be prompted to enter the contents of the Preset. Just copy and paste the contents of the sample Presets provided.
+You'll be prompted to enter the contents of the Preset.
+Copy and paste the sample Presets provided.
 
+---
 
-To start provisioning workloads with the Preset, modify provision_workload.yml to specify
-preset - The name of the Preset
-name - Name of the workload
-context - Name of the array where you would like to provision the workload
-host - Name of the host to connect to the workload once provisioned
+## Provision Workloads
 
+Modify `provision_workload.yml` to specify:
 
-And run 
+- `preset` — Name of the Preset
+- `name` — Name of the workload
+- `context` — Name of the array to provision the workload
+- `host` — Name of the host to connect to the workload
+
+**Run:**
+
+```shell
 ansible-playbook provision_workload.yml
- 
+```
+
+---
+
+> _For more information, refer to the official documentation or the sample files provided in this package._
