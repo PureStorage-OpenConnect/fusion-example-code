@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ansible/ansible/master/docs/docsite/_static/ansible-logo.png" alt="Ansible Logo" width="120"/>
-</p>
-
 # Accelerate 2025 Demo: Ansible Scripts
 
 These are the **Ansible scripts** used in the Accelerate 2025 demo.
