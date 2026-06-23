@@ -1,5 +1,18 @@
 ---
-- name: Ensure configuration of arrays in fleet is consistent
+# Configure every array in the fleet according to array_config.yml, honoring the
+# topology hierarchy defined in topology_config.yml.
+#
+# array_config.yml provides NTP / DNS / syslog / host settings keyed by topology
+# group name (e.g. "us-west", "us-east-1"). Configuration declared on a group is
+# inherited by every array in that group *and* in any of its descendant groups.
+# So an array in "us-west-1" picks up the "us-west" NTP/DNS/syslog settings while
+# also picking up its own "us-west-1" host definitions.
+#
+# Topology structure (parent/child groups and which arrays live in which group)
+# is read from topology_config.yml -- the same source of truth that
+# configure_topology.yml reconciles the fleet against. Fleet membership is read
+# live from the array so that only real members are configured.
+- name: Configure each array in the fleet according to its topology group
   hosts: localhost
   gather_facts: false
   collections:
@@ -7,88 +20,179 @@
   vars_files:
     - constants.yml
     - array_config.yml
+    - topology_config.yml
 
   tasks:
-   - name:  Retrieve fleet information
-     purestorage.flasharray.purefa_info:
-       gather_subset:
-         - fleet
-       fa_url: "{{ purefa_url }}"
-       api_token: "{{ purefa_api }}"
-     register: fleet_info
+    - name: Retrieve fleet information
+      purestorage.flasharray.purefa_info:
+        gather_subset:
+          - fleet
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      register: fleet_info
 
-   - name: Get fleet membership
-     ansible.builtin.set_fact:
-       fleet_name: "{{ item.key }}"
-       fleet_members: "{{ item.value.members.keys() | list }}"
-     with_dict: "{{fleet_info['purefa_info']['fleet']}}"
+    - name: Capture fleet name
+      ansible.builtin.set_fact:
+        fleet_name: "{{ fleet_info.purefa_info.fleet.keys() | list | first | default('') }}"
 
-   - name: Configure DNS
-     purestorage.flasharray.purefa_dns:
-       fa_url: "{{ purefa_url }}"
-       api_token: "{{ purefa_api }}"
-       context: "{{ item[1] }}"
-       service: "{{ item[0].service }}"
-       name: "{{ item[0].name }}"
-       domain: "{{ item[0].domain }}"
-       nameservers: "{{ item[0].nameservers }}"
-     loop: "{{ dns | product(fleet_members) | list }}"
+    - name: Capture fleet members
+      ansible.builtin.set_fact:
+        fleet_members: >-
+          {{ (fleet_info.purefa_info.fleet[fleet_name].members.keys() | list)
+             if fleet_name else [] }}
 
-   - name: Configure NTP
-     purestorage.flasharray.purefa_ntp:
-       fa_url: "{{ purefa_url }}"
-       api_token: "{{ purefa_api }}"
-       context: "{{ item }}"
-       ntp_servers: "{{ ntp.servers }}"
-     loop: "{{ fleet_members }}"
+    # --- Build the topology maps from topology_config.yml -------------------
 
-   - name: Configure syslog
-     purestorage.flasharray.purefa_syslog:
-       fa_url: "{{ purefa_url }}"
-       api_token: "{{ purefa_api }}"
-       context: "{{ item[1] }}"
-       name: "{{ item[0].name }}"
-       address: "{{ item[0].address }}"
-       port: "{{ item[0].port }}"
-       protocol: "{{ item[0].protocol }}"
-     loop: "{{ syslog | product(fleet_members) | list }}"
+    - name: Map each array to the topology group that directly contains it
+      ansible.builtin.set_fact:
+        array_group: "{{ array_group | default({}) | combine({ item.1: item.0.name }) }}"
+      loop: "{{ query('subelements', topology, 'arrays', {'skip_missing': True}) }}"
+      loop_control:
+        label: "{{ item.1 }} -> {{ item.0.name }}"
 
-   - name: Configure pgroup
-     purestorage.flasharray.purefa_pg:
-       fa_url: "{{ purefa_url }}"
-       api_token: "{{ purefa_api }}"
-       context: "{{ item[1] }}"
-       name: "{{ item[0].name }}"
-     loop: "{{ pgroupauto | product(fleet_members) | list }}"
+    - name: Map each topology group to its parent group
+      ansible.builtin.set_fact:
+        parent_map: "{{ parent_map | default({}) | combine({ item.1: item.0.name }) }}"
+      loop: "{{ query('subelements', topology, 'tgroups', {'skip_missing': True}) }}"
+      loop_control:
+        label: "{{ item.1 }} -> {{ item.0.name }}"
 
-   - name: Configure pgroup snapshot schedule
-     purestorage.flasharray.purefa_pgsched:
-       fa_url: "{{ purefa_url }}"
-       api_token: "{{ purefa_api }}"
-       context: "{{ item[1] }}"
-       name: "{{ item[0].name }}"
-       schedule: snapshot
-       snap_frequency: "{{ item[0].snap_frequency }}"
-       snap_at: "{{ item[0].snap_at }}"
-       per_day: "{{ item[0].per_day }}"
-       all_for: "{{ item[0].all_for }}"
-     loop: "{{ pgroupauto | product(fleet_members) | list }}"     
+    - name: Resolve each array's topology ancestor chain (most specific first)
+      ansible.builtin.set_fact:
+        array_ancestors: >-
+          {{ array_ancestors | default({}) | combine({ item: _chain }) }}
+      vars:
+        _chain: >-
+          {%- set ns = namespace(cur=array_group[item], chain=[array_group[item]]) -%}
+          {%- for _ in range(16) -%}
+            {%- if parent_map.get(ns.cur) is not none -%}
+              {%- set ns.chain = ns.chain + [parent_map[ns.cur]] -%}
+              {%- set ns.cur = parent_map[ns.cur] -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ ns.chain }}
+      loop: "{{ array_group.keys() | list }}"
+      loop_control:
+        label: "{{ item }}"
 
-   - name: Setting default protection
-     purestorage.flasharray.purefa_default_protection:
-       fa_url: "{{ purefa_url }}"
-       api_token: "{{ purefa_api }}"
-       context: "{{ item }}"
-       name: "{{ pgroupauto | map(attribute='name') | list }}"
-     loop: "{{ fleet_members }}"     
+    - name: Determine which arrays we will configure (fleet members with a topology group)
+      ansible.builtin.set_fact:
+        managed_arrays: "{{ array_group.keys() | list | intersect(fleet_members) }}"
 
-   - name: Configuring hosts
-     purestorage.flasharray.purefa_host:
-       fa_url: "{{ purefa_url }}"
-       api_token: "{{ purefa_api }}"
-       context: "{{ item[1] }}"
-       name: "{{ item[0].name }}"
-       personality: "{{ item[0].personality }}"
-       iqn: "{{ item[0].iqn }}"
-     loop: "{{ hosts | product(fleet_members) | list }}"    
-  
+    # --- Resolve per-array configuration from the inherited group config -----
+    # For each array we pick the most specific ancestor group that has config
+    # defined for the section, then stamp the array name onto each entry so the
+    # module tasks below can drive a single flat loop using `context`.
+
+    - name: Build NTP assignments
+      ansible.builtin.set_fact:
+        ntp_assignments: >-
+          {{ ntp_assignments | default([]) + [ {'array': item, 'servers': ntp[_group].servers} ] }}
+      vars:
+        _matches: "{{ array_ancestors[item] | select('in', ntp.keys() | list) | list }}"
+        _group: "{{ _matches[0] | default('') }}"
+      when: array_ancestors[item] | select('in', ntp.keys() | list) | list | length > 0
+      loop: "{{ managed_arrays }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Build DNS assignments
+      ansible.builtin.set_fact:
+        dns_assignments: >-
+          {{ dns_assignments | default([]) + (dns[_group] | map('combine', {'array': item}) | list) }}
+      vars:
+        _matches: "{{ array_ancestors[item] | select('in', dns.keys() | list) | list }}"
+        _group: "{{ _matches[0] | default('') }}"
+      when: array_ancestors[item] | select('in', dns.keys() | list) | list | length > 0
+      loop: "{{ managed_arrays }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Build syslog assignments
+      ansible.builtin.set_fact:
+        syslog_assignments: >-
+          {{ syslog_assignments | default([]) + (syslog[_group] | map('combine', {'array': item}) | list) }}
+      vars:
+        _matches: "{{ array_ancestors[item] | select('in', syslog.keys() | list) | list }}"
+        _group: "{{ _matches[0] | default('') }}"
+      when: array_ancestors[item] | select('in', syslog.keys() | list) | list | length > 0
+      loop: "{{ managed_arrays }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Build host assignments
+      ansible.builtin.set_fact:
+        host_assignments: >-
+          {{ host_assignments | default([]) + (hosts[_group] | map('combine', {'array': item}) | list) }}
+      vars:
+        _matches: "{{ array_ancestors[item] | select('in', hosts.keys() | list) | list }}"
+        _group: "{{ _matches[0] | default('') }}"
+      when: array_ancestors[item] | select('in', hosts.keys() | list) | list | length > 0
+      loop: "{{ managed_arrays }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Show the resolved configuration plan
+      ansible.builtin.debug:
+        msg:
+          fleet_name: "{{ fleet_name }}"
+          managed_arrays: "{{ managed_arrays }}"
+          array_ancestors: "{{ array_ancestors | default({}) }}"
+          ntp_assignments: "{{ ntp_assignments | default([]) }}"
+          dns_assignments: "{{ dns_assignments | default([]) }}"
+          syslog_assignments: "{{ syslog_assignments | default([]) }}"
+          host_assignments: "{{ host_assignments | default([]) }}"
+
+    # --- Apply the configuration, per array, via `context` -------------------
+
+    - name: Configure NTP
+      purestorage.flasharray.purefa_ntp:
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+        context: "{{ item.array }}"
+        ntp_servers: "{{ item.servers }}"
+      failed_when: false
+      loop: "{{ ntp_assignments | default([]) }}"
+      loop_control:
+        label: "{{ item.array }}"
+
+    - name: Configure DNS
+      purestorage.flasharray.purefa_dns:
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+        context: "{{ item.array }}"
+        service: "{{ item.service }}"
+        name: "{{ item.name }}"
+        domain: "{{ item.domain }}"
+        nameservers: "{{ item.nameservers }}"
+      failed_when: false
+      loop: "{{ dns_assignments | default([]) }}"
+      loop_control:
+        label: "{{ item.array }} / {{ item.name }}"
+
+    - name: Configure syslog
+      purestorage.flasharray.purefa_syslog:
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+        context: "{{ item.array }}"
+        name: "{{ item.name }}"
+        address: "{{ item.address }}"
+        port: "{{ item.port }}"
+        protocol: "{{ item.protocol }}"
+      failed_when: false
+      loop: "{{ syslog_assignments | default([]) }}"
+      loop_control:
+        label: "{{ item.array }} / {{ item.name }}"
+
+    - name: Configure hosts
+      purestorage.flasharray.purefa_host:
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+        context: "{{ item.array }}"
+        name: "{{ item.name }}"
+        personality: "{{ item.personality }}"
+        iqn: "{{ item.iqn }}"
+      failed_when: false
+      loop: "{{ host_assignments | default([]) }}"
+      loop_control:
+        label: "{{ item.array }} / {{ item.name }}"

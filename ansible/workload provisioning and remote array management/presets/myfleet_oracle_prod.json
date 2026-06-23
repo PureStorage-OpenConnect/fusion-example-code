@@ -1,0 +1,207 @@
+{
+  "context": {
+    "id": "e55bb930-92e1-4928-91df-3c1ba8f9e885",
+    "name": "slc-dc1-fax1",
+    "resource_type": "remote-arrays"
+  },
+  "description": "Provision a production oracle database",
+  "id": "ff6b8fcf-a1b2-4eba-90f3-3752a17b0b87",
+  "name": "myfleet:oracle-prod",
+  "parameters": [
+    {
+      "constraints": {
+        "resource_reference": {
+          "allowed_values": [
+            {
+              "resource_type": "remote-arrays"
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "description": "Select a remote target for replication"
+      },
+      "name": "remote",
+      "type": "resource_reference"
+    },
+    {
+      "constraints": {
+        "string": {
+          "default": "acme"
+        }
+      },
+      "metadata": {
+        "description": "Please enter billingID"
+      },
+      "name": "billingID",
+      "type": "string"
+    },
+    {
+      "constraints": {
+        "integer": {
+          "default": 1,
+          "maximum": 10,
+          "minimum": 1
+        }
+      },
+      "metadata": {
+        "description": "Enter number of db-data volumes to create"
+      },
+      "name": "db_data_qty",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "integer": {
+          "default": 107374182400,
+          "maximum": 1099511627776,
+          "minimum": 1073741824
+        }
+      },
+      "metadata": {
+        "description": "Enter size of db-data volumes",
+        "subtype": "size"
+      },
+      "name": "db_data_size",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "integer": {
+          "default": 1,
+          "maximum": 5,
+          "minimum": 1
+        }
+      },
+      "metadata": {
+        "description": "Enter number of db-log volumes to create"
+      },
+      "name": "db_log_qty",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "integer": {
+          "default": 107374182400,
+          "maximum": 536870912000,
+          "minimum": 1073741824
+        }
+      },
+      "metadata": {
+        "description": "Enter size of db-log volumes to create",
+        "subtype": "size"
+      },
+      "name": "db_log_size",
+      "type": "integer"
+    }
+  ],
+  "periodic_replication_configurations": [
+    {
+      "name": "daily-remote",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}"
+        }
+      ],
+      "remote_targets": [
+        {
+          "id": "{{ parameters.remote.id }}",
+          "name": "{{ parameters.remote.name }}",
+          "resource_type": "{{ parameters.remote.resource_type }}"
+        }
+      ],
+      "rules": [
+        {
+          "every": "86400000",
+          "keep_for": "2592000000"
+        }
+      ]
+    }
+  ],
+  "placement_configurations": [
+    {
+      "name": "default-placement",
+      "storage_class": {
+        "name": "flasharray-x",
+        "resource_type": "storage-classes"
+      }
+    }
+  ],
+  "platform_features": [
+    "fa_block"
+  ],
+  "revision": 4,
+  "snapshot_configurations": [
+    {
+      "name": "hourly-local",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}"
+        }
+      ],
+      "policy_action": "always_create",
+      "rules": [
+        {
+          "every": "3600000",
+          "keep_for": "86400000"
+        }
+      ]
+    }
+  ],
+  "type": 43,
+  "volume_configurations": [
+    {
+      "count": "{{ parameters.db_log_qty }}",
+      "name": "db-log",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}-{{functions.pad_left(workload.configuration.index, 4)}}"
+        }
+      ],
+      "periodic_replication_configurations": [
+        "daily-remote"
+      ],
+      "placement_configurations": [
+        "default-placement"
+      ],
+      "provisioned_size": "{{ parameters.db_log_size }}",
+      "snapshot_configurations": [
+        "hourly-local"
+      ]
+    },
+    {
+      "count": "{{ parameters.db_data_qty }}",
+      "name": "db-data",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}-{{functions.pad_left(workload.configuration.index, 4)}}"
+        }
+      ],
+      "periodic_replication_configurations": [
+        "daily-remote"
+      ],
+      "placement_configurations": [
+        "default-placement"
+      ],
+      "provisioned_size": "{{ parameters.db_data_size }}",
+      "snapshot_configurations": [
+        "hourly-local"
+      ]
+    }
+  ],
+  "workload_tags": [
+    {
+      "copyable": "true",
+      "key": "tier",
+      "namespace": "default",
+      "value": "production"
+    },
+    {
+      "copyable": "true",
+      "key": "billingID",
+      "namespace": "default",
+      "value": "{{ parameters.billingID }}"
+    }
+  ],
+  "workload_type": "Oracle"
+}

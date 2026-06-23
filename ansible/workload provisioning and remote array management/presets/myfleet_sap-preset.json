@@ -1,0 +1,201 @@
+{
+  "context": {
+    "id": "e55bb930-92e1-4928-91df-3c1ba8f9e885",
+    "name": "slc-dc1-fax1",
+    "resource_type": "remote-arrays"
+  },
+  "description": "Provisions storage for SAP database",
+  "id": "063a1825-e54a-4357-b919-f0493f70cda2",
+  "name": "myfleet:sap-preset",
+  "parameters": [
+    {
+      "constraints": {
+        "resource_reference": {
+          "allowed_values": [
+            {
+              "resource_type": "storage-classes"
+            }
+          ],
+          "default": {
+            "name": "flasharray-x",
+            "resource_type": "storage-classes"
+          }
+        }
+      },
+      "name": "storage_class",
+      "type": "resource_reference"
+    },
+    {
+      "constraints": {
+        "integer": {
+          "default": 11
+        }
+      },
+      "name": "volume_count",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "integer": {
+          "default": 734003200
+        }
+      },
+      "name": "bandwidth_limit",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "resource_reference": {
+          "allowed_values": [
+            {
+              "resource_type": "remote-arrays"
+            }
+          ]
+        }
+      },
+      "name": "remote_target",
+      "type": "resource_reference"
+    }
+  ],
+  "periodic_replication_configurations": [
+    {
+      "name": "replication",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}"
+        }
+      ],
+      "remote_targets": [
+        {
+          "id": "{{ parameters.remote_target.id }}",
+          "name": "{{ parameters.remote_target.name }}",
+          "resource_type": "{{ parameters.remote_target.resource_type }}"
+        }
+      ],
+      "rules": [
+        {
+          "every": "14400000",
+          "keep_for": "86400000"
+        }
+      ]
+    }
+  ],
+  "placement_configurations": [
+    {
+      "name": "default-placement",
+      "qos_configurations": [
+        "default-qos"
+      ],
+      "storage_class": {
+        "id": "{{ parameters.storage_class.id }}",
+        "name": "{{ parameters.storage_class.name }}",
+        "resource_type": "{{ parameters.storage_class.resource_type }}"
+      }
+    }
+  ],
+  "platform_features": [
+    "fa_block"
+  ],
+  "qos_configurations": [
+    {
+      "bandwidth_limit": "{{ parameters.bandwidth_limit }}",
+      "name": "default-qos",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}"
+        }
+      ]
+    }
+  ],
+  "revision": 2,
+  "snapshot_configurations": [
+    {
+      "name": "snapshots",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}"
+        }
+      ],
+      "policy_action": "create_or_reuse",
+      "rules": [
+        {
+          "every": "86400000",
+          "keep_for": "172800000"
+        }
+      ]
+    }
+  ],
+  "type": 43,
+  "volume_configurations": [
+    {
+      "count": "{{ parameters.volume_count }}",
+      "name": "data-volumes",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}-{{functions.pad_left(workload.configuration.index, 4)}}"
+        }
+      ],
+      "periodic_replication_configurations": [
+        "replication"
+      ],
+      "placement_configurations": [
+        "default-placement"
+      ],
+      "provisioned_size": "41875931136",
+      "snapshot_configurations": [
+        "snapshots"
+      ]
+    }
+  ],
+  "workload_tags": [
+    {
+      "copyable": "true",
+      "key": "protection_group",
+      "namespace": "default",
+      "value": "l-t2-daily"
+    },
+    {
+      "copyable": "true",
+      "key": "host",
+      "namespace": "default",
+      "value": "8174:syn08p01st041:host:syn99a08ld1003"
+    },
+    {
+      "copyable": "true",
+      "key": "pg_snapshot_enabled",
+      "namespace": "default",
+      "value": "true"
+    },
+    {
+      "copyable": "true",
+      "key": "pg_snapshot_frequency_ms",
+      "namespace": "default",
+      "value": "86400000"
+    },
+    {
+      "copyable": "true",
+      "key": "pg_snapshot_retention_ms",
+      "namespace": "default",
+      "value": "172800000"
+    },
+    {
+      "copyable": "true",
+      "key": "pg_replication_enabled",
+      "namespace": "default",
+      "value": "false"
+    },
+    {
+      "copyable": "true",
+      "key": "pg_replication_frequency_ms",
+      "namespace": "default",
+      "value": "14400000"
+    },
+    {
+      "copyable": "true",
+      "key": "pg_replication_retention_ms",
+      "namespace": "default",
+      "value": "86400000"
+    }
+  ],
+  "workload_type": "SAP"
+}

@@ -1,14 +1,14 @@
-# Accelerate 2025 Demo: Ansible Scripts
+# Accelerate 2026 Demo: Ansible Scripts
 
-These are the **Ansible scripts** used in the Accelerate 2025 demo.
+These are the **Ansible scripts** used in the Accelerate 2026 demo.
 
 ---
 
 ## Requirements
 
-- **FlashArray Ansible Galaxy Collection** `1.37.0` and above
+- **FlashArray Ansible Galaxy Collection** `1.42.0` and above
   [View on Ansible Galaxy](https://galaxy.ansible.com/ui/repo/published/purestorage/flasharray/)
-- **Purity** `6.10.2` and above
+- **Purity** `6.10.6` and above
 
 ---
 
@@ -41,6 +41,21 @@ pureadmin create --api-token
 
 ---
 
+## Configuring Topology Specification
+
+The `topology_config.yml` file specifies how you want your topology groups to be structured
+
+You can refer to `topology_config.yml.example` as an example on how to create `topology_config.yml`
+
+**To apply `topology_config.yml` to all arrays in the fleet:**
+
+```shell
+ansible-playbook configure_topology.yml
+```
+
+---
+
+
 ## Configuring Array Specification
 
 The `array_config.yml` file specifies how you want each array to be configured:
@@ -50,6 +65,8 @@ The `array_config.yml` file specifies how you want each array to be configured:
 - Syslog servers
 - Default protection
 - Hosts
+
+You can refer to `array_config.yml.example` as an example on how to create `array_config.yml`
 
 **To apply `array_config.yml` to all arrays in the fleet:**
 
@@ -83,12 +100,9 @@ Copy and paste the sample Presets provided.
 
 ## Provision Workloads
 
-Modify `provision_workload.yml` to specify:
+The `workload_config.yml` specifies how you want workloads to be configured
 
-- `preset` — Name of the Preset
-- `name` — Name of the workload
-- `context` — Name of the array to provision the workload
-- `host` — Name of the host to connect to the workload
+You can refer to `workload_config.yml.example` as an example on how to create `workload_config.yml`
 
 **Run:**
 

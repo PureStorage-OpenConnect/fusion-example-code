@@ -1,0 +1,27 @@
+topology:
+  - name: "tgroup1"
+    type: "tgroup"
+    arrays:
+      - "array1"
+      - "array2"
+    tgroups: []
+  - name: "tgroup2"
+    type: "tgroup"
+    arrays: []
+    tgroups:
+      - "tgroup2-1"
+      - "tgroup2-2"
+  - name: "tgroup2-1"
+    type: "tgroup"
+    arrays:
+      - "array3"
+      - "array4"
+      - "array5"
+    tgroups: []
+  - name: "tgroup2-2"
+    type: "tgroup"
+    arrays:
+      - "array6"
+      - "array7"
+      - "array8"
+    tgroups: []

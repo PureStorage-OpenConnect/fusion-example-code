@@ -1,18 +1,110 @@
-- name: Provision a workload given a preset
+---
+- name: Provision workloads from workload_config.yml
   hosts: localhost
   gather_facts: false
   collections:
     - purestorage.flasharray
   vars_files:
     - constants.yml
-    - array_config.yml
+    - workload_config.yml
 
   tasks:
-   - name: Provision workload
-     purestorage.flasharray.purefa_workload:
-       fa_url: "{{ purefa_url }}"
-       api_token: "{{ purefa_api }}"
-       preset: "SQL"
-       context: "c7-sim700-vfa2"
-       name: "sql-cluster"
-       host: "windows-host"
+    - name: Validate connection configuration
+      ansible.builtin.assert:
+        that:
+          - purefa_url is defined
+          - purefa_api is defined
+        fail_msg: >-
+          constants.yml must define purefa_url and purefa_api.
+
+    - name: Normalize workloads into a list
+      ansible.builtin.set_fact:
+        workload_list: "{{ workloads | default([workload] if workload is defined else []) }}"
+
+    - name: Validate at least one workload is defined
+      ansible.builtin.assert:
+        that:
+          - workload_list | length > 0
+        fail_msg: >-
+          workload_config.yml must define either a single workload mapping
+          or a workloads list with at least one entry.
+
+    - name: Validate required fields for each workload
+      ansible.builtin.assert:
+        that:
+          - item.name is defined
+          - item.preset is defined
+          - item.context is defined
+        fail_msg: >-
+          Each workload must define name, preset, and context.
+      loop: "{{ workload_list }}"
+      loop_control:
+        label: "{{ item.name | default('<unnamed>') }}"
+
+    - name: Validate preset format for purefa_workload
+      ansible.builtin.assert:
+        that:
+          - "':' not in item.preset"
+        fail_msg: >-
+          workload.preset must be the unqualified preset name, for example
+          Oracle. The purefa_workload module prefixes the fleet name itself.
+      loop: "{{ workload_list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Retrieve fleet information
+      purestorage.flasharray.purefa_info:
+        gather_subset:
+          - fleet
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      register: fleet_info
+
+    - name: Capture fleet name
+      ansible.builtin.set_fact:
+        fleet_name: "{{ fleet_info.purefa_info.fleet.keys() | list | first | default('') }}"
+
+    - name: Capture fleet members
+      ansible.builtin.set_fact:
+        fleet_members: >-
+          {{ (fleet_info.purefa_info.fleet[fleet_name].members.keys() | list)
+             if fleet_name else [] }}
+
+    - name: Validate requested context is a fleet member
+      ansible.builtin.assert:
+        that:
+          - item.context in fleet_members
+        fail_msg: >-
+          Requested workload.context {{ item.context }} is
+          not a member of fleet {{ fleet_name | default('') }}.
+      loop: "{{ workload_list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Provision workload using the FlashArray collection module
+      purestorage.flasharray.purefa_workload:
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+        name: "{{ item.name }}"
+        preset: "{{ item.preset }}"
+        context: "{{ item.context }}"
+        host: "{{ item.host | default(omit) }}"
+        placement: "{{ item.placement | default(omit) }}"
+        parameters: "{{ item.parameters | default(omit) }}"
+        recommendation: "{{ item.recommendation | default(omit) }}"
+        state: present
+      loop: "{{ workload_list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: workload_results
+
+    - name: Report workload provisioning results
+      ansible.builtin.debug:
+        msg:
+          workload_name: "{{ item.item.name }}"
+          preset: "{{ item.item.preset }}"
+          context: "{{ item.item.context }}"
+          changed: "{{ item.changed }}"
+      loop: "{{ workload_results.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
