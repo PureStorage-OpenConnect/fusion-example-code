@@ -1,5 +1,5 @@
-&nbsp;&nbsp; <img src="/images/purefusion.png">
+&nbsp;&nbsp; <img src="/images/everpurefusion.png">
 
-## Pure Fusion Example Code
+## Everpure Fusion Example Code
 
-Example code and scripts for Pure Fusion automation
+Example code and scripts for Everpure Fusion automation
