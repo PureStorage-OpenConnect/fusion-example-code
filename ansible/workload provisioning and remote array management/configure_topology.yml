@@ -1,0 +1,308 @@
+---
+- name: Organize arrays into topology groups as defined in topology_config.yml
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - purestorage.flasharray
+  vars_files:
+    - constants.yml
+    - topology_config.yml
+
+  vars:
+    desired_group_names: "{{ topology | map(attribute='name') | list }}"
+    desired_array_entries: >-
+      {{ query('subelements', topology, 'arrays', {'skip_missing': True}) }}
+    desired_child_entries: >-
+      {{ query('subelements', topology, 'tgroups', {'skip_missing': True}) }}
+
+  tasks:
+    - name: Validate desired topology structure
+      ansible.builtin.assert:
+        that:
+          - topology is defined
+          - topology is iterable
+          - desired_group_names | length > 0
+          - desired_group_names | unique | length == desired_group_names | length
+          - topology | selectattr('type', 'equalto', 'tgroup') | list | length == topology | length
+          - desired_array_entries | map('last') | list | unique | length == desired_array_entries | length
+          - desired_child_entries | map('last') | list | unique | length == desired_child_entries | length
+          - desired_child_entries | map('last') | list | difference(desired_group_names) | length == 0
+        fail_msg: >-
+          topology_config.yml must define unique topology groups, unique arrays,
+          unique child references, and only reference child topology groups that
+          are also defined in the file.
+
+    - name: Ensure no topology group is its own child
+      ansible.builtin.assert:
+        that:
+          - item.0.name != item.1
+        fail_msg: "Topology group {{ item.0.name }} cannot be its own child"
+      loop: "{{ desired_child_entries }}"
+      loop_control:
+        label: "{{ item.0.name }} -> {{ item.1 }}"
+
+    - name: Retrieve current fleet and topology group information
+      purestorage.flasharray.purefa_info:
+        gather_subset:
+          - fleet
+          - tgroups
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      register: fleet_info
+
+    - name: Initialize reconciliation data structures
+      ansible.builtin.set_fact:
+        current_fleet: "{{ fleet_info.purefa_info.fleet | default({}) }}"
+        current_tgroups: "{{ fleet_info.purefa_info.tgroups | default({}) }}"
+        desired_group_map: {}
+        desired_parent_map: {}
+        desired_array_map: {}
+        current_array_map: {}
+        root_detach_actions: []
+        reparent_actions: []
+        array_detach_actions: []
+        array_attach_actions: []
+        extra_parent_detach_actions: []
+        extra_child_detach_actions: []
+
+    - name: Capture fleet name
+      ansible.builtin.set_fact:
+        fleet_name: "{{ current_fleet.keys() | list | first | default('') }}"
+
+    - name: Capture fleet members
+      ansible.builtin.set_fact:
+        fleet_members: "{{ current_fleet[fleet_name].members.keys() | list if fleet_name else [] }}"
+
+    - name: Build desired topology group map
+      ansible.builtin.set_fact:
+        desired_group_map: >-
+          {{ desired_group_map | combine({
+              item.name: {
+                'arrays': item.arrays | default([]),
+                'tgroups': item.tgroups | default([])
+              }
+            }) }}
+      loop: "{{ topology }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Seed desired parent map with top-level defaults
+      ansible.builtin.set_fact:
+        desired_parent_map: "{{ desired_parent_map | combine({ item: None }) }}"
+      loop: "{{ desired_group_names }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Build desired parent map from child definitions
+      ansible.builtin.set_fact:
+        desired_parent_map: "{{ desired_parent_map | combine({ item.1: item.0.name }) }}"
+      loop: "{{ desired_child_entries }}"
+      loop_control:
+        label: "{{ item.0.name }} -> {{ item.1 }}"
+
+    - name: Build desired array placement map
+      ansible.builtin.set_fact:
+        desired_array_map: "{{ desired_array_map | combine({ item.1: item.0.name }) }}"
+      loop: "{{ desired_array_entries }}"
+      loop_control:
+        label: "{{ item.1 }} -> {{ item.0.name }}"
+
+    - name: Validate desired arrays exist in the fleet
+      ansible.builtin.assert:
+        that:
+          - desired_array_map.keys() | list | difference(fleet_members) | length == 0
+        fail_msg: >-
+          topology_config.yml references arrays that are not members of the
+          current fleet: {{ desired_array_map.keys() | list | difference(fleet_members) | join(', ') }}
+
+    - name: Build current array placement map
+      ansible.builtin.set_fact:
+        current_array_map: "{{ current_array_map | combine({ item.1.name: item.0.key }) }}"
+      loop: "{{ query('subelements', current_tgroups | dict2items, 'value.arrays', {'skip_missing': True}) }}"
+      loop_control:
+        label: "{{ item.1.name }} -> {{ item.0.key }}"
+
+    - name: Build detach actions for groups that should be top-level
+      ansible.builtin.set_fact:
+        root_detach_actions: >-
+          {{ root_detach_actions + [{
+              'parent': current_tgroups[item].parent_topology_group,
+              'child': item
+            }] }}
+      loop: "{{ desired_group_names }}"
+      when:
+        - current_tgroups[item] is defined
+        - desired_parent_map[item] is none
+        - current_tgroups[item].parent_topology_group | default('') | length > 0
+      loop_control:
+        label: >-
+          {{ ((current_tgroups[item].parent_topology_group | default('top-level'))
+              if (current_tgroups[item] is defined) else 'missing') }} -> {{ item }}
+
+    - name: Build reparent actions for child topology groups
+      ansible.builtin.set_fact:
+        reparent_actions: >-
+          {{ reparent_actions + [{
+              'name': item,
+              'parent': desired_parent_map[item]
+            }] }}
+      loop: "{{ desired_group_names }}"
+      when:
+        - desired_parent_map[item] is not none
+        - current_tgroups[item] is not defined or current_tgroups[item].parent_topology_group != desired_parent_map[item]
+      loop_control:
+        label: "{{ item }} -> {{ desired_parent_map[item] }}"
+
+    - name: Build array detach actions
+      ansible.builtin.set_fact:
+        array_detach_actions: >-
+          {{ array_detach_actions + [{
+              'tgroup': item.value,
+              'array': item.key
+            }] }}
+      loop: "{{ current_array_map | dict2items }}"
+      when: desired_array_map.get(item.key) != item.value
+      loop_control:
+        label: "{{ item.key }} from {{ item.value }}"
+
+    - name: Build array attach actions
+      ansible.builtin.set_fact:
+        array_attach_actions: >-
+          {{ array_attach_actions + [{
+              'tgroup': item.value,
+              'array': item.key
+            }] }}
+      loop: "{{ desired_array_map | dict2items }}"
+      when: current_array_map.get(item.key) != item.value
+      loop_control:
+        label: "{{ item.key }} to {{ item.value }}"
+
+    - name: Build parent detach actions for extra topology groups
+      ansible.builtin.set_fact:
+        extra_parent_detach_actions: >-
+          {{ extra_parent_detach_actions + [{
+              'parent': current_tgroups[item].parent_topology_group,
+              'child': item
+            }] }}
+      loop: "{{ current_tgroups.keys() | difference(desired_group_names) | list }}"
+      when: current_tgroups[item].parent_topology_group | default('') | length > 0
+      loop_control:
+        label: "{{ current_tgroups[item].parent_topology_group }} -> {{ item }}"
+
+    - name: Build child detach actions for extra topology groups
+      ansible.builtin.set_fact:
+        extra_child_detach_actions: >-
+          {{ extra_child_detach_actions + [{
+              'parent': item.0.key,
+              'child': item.1.name
+            }] }}
+      loop: "{{ query('subelements', current_tgroups | dict2items, 'value.tgroups', {'skip_missing': True}) }}"
+      when: item.0.key not in desired_group_names
+      loop_control:
+        label: "{{ item.0.key }} -> {{ item.1.name }}"
+
+    - name: Identify topology groups to delete
+      ansible.builtin.set_fact:
+        extra_tgroups: "{{ current_tgroups.keys() | difference(desired_group_names) | list | sort }}"
+
+    - name: Show planned topology changes
+      ansible.builtin.debug:
+        msg:
+          fleet_name: "{{ fleet_name }}"
+          fleet_members: "{{ fleet_members }}"
+          create_or_keep_tgroups: "{{ desired_group_names | sort }}"
+          detach_root_groups: "{{ root_detach_actions }}"
+          reparent_tgroups: "{{ reparent_actions }}"
+          detach_arrays: "{{ array_detach_actions }}"
+          attach_arrays: "{{ array_attach_actions }}"
+          detach_extra_groups_from_parents: "{{ extra_parent_detach_actions }}"
+          detach_extra_children: "{{ extra_child_detach_actions }}"
+          delete_tgroups: "{{ extra_tgroups }}"
+
+    - name: Ensure all desired topology groups exist
+      purestorage.flasharray.purefa_tgroup:
+        name: "{{ item }}"
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      loop: "{{ desired_group_names | sort }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Detach groups that should be top-level
+      purestorage.flasharray.purefa_tgroup:
+        name: "{{ item.parent }}"
+        tgroup:
+          - "{{ item.child }}"
+        state: absent
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      loop: "{{ root_detach_actions }}"
+      loop_control:
+        label: "{{ item.parent }} -X-> {{ item.child }}"
+
+    - name: Reparent topology groups into their desired parents
+      purestorage.flasharray.purefa_tgroup:
+        name: "{{ item.name }}"
+        parent: "{{ item.parent }}"
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      loop: "{{ reparent_actions }}"
+      loop_control:
+        label: "{{ item.name }} -> {{ item.parent }}"
+
+    - name: Remove arrays from incorrect topology groups
+      purestorage.flasharray.purefa_tgroup:
+        name: "{{ item.tgroup }}"
+        array:
+          - "{{ item.array }}"
+        state: absent
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      loop: "{{ array_detach_actions }}"
+      loop_control:
+        label: "{{ item.array }} from {{ item.tgroup }}"
+
+    - name: Add arrays to their desired topology groups
+      purestorage.flasharray.purefa_tgroup:
+        name: "{{ item.tgroup }}"
+        array:
+          - "{{ item.array }}"
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      loop: "{{ array_attach_actions }}"
+      loop_control:
+        label: "{{ item.array }} to {{ item.tgroup }}"
+
+    - name: Detach extra topology groups from their current parents
+      purestorage.flasharray.purefa_tgroup:
+        name: "{{ item.parent }}"
+        tgroup:
+          - "{{ item.child }}"
+        state: absent
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      loop: "{{ extra_parent_detach_actions }}"
+      loop_control:
+        label: "{{ item.parent }} -X-> {{ item.child }}"
+
+    - name: Remove child topology groups from groups being deleted
+      purestorage.flasharray.purefa_tgroup:
+        name: "{{ item.parent }}"
+        tgroup:
+          - "{{ item.child }}"
+        state: absent
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      loop: "{{ extra_child_detach_actions }}"
+      loop_control:
+        label: "{{ item.parent }} -X-> {{ item.child }}"
+
+    - name: Delete topology groups not present in topology_config.yml
+      purestorage.flasharray.purefa_tgroup:
+        name: "{{ item }}"
+        state: absent
+        fa_url: "{{ purefa_url }}"
+        api_token: "{{ purefa_api }}"
+      loop: "{{ extra_tgroups }}"
+      loop_control:
+        label: "{{ item }}"

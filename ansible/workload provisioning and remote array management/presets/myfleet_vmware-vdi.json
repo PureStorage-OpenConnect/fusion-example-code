@@ -1,0 +1,80 @@
+{
+  "context": {
+    "id": "e55bb930-92e1-4928-91df-3c1ba8f9e885",
+    "name": "slc-dc1-fax1",
+    "resource_type": "remote-arrays"
+  },
+  "description": "Provisions a VMWare datastore for VDI workloads",
+  "id": "1beb43d5-19b8-44db-84a6-d9066c9d3b22",
+  "name": "myfleet:vmware-vdi",
+  "parameters": [
+    {
+      "constraints": {
+        "resource_reference": {
+          "allowed_values": [
+            {
+              "name": "us.arrays",
+              "resource_type": "remote-arrays"
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "description": "Placement Scope for Workload"
+      },
+      "name": "placement_target_parameter",
+      "type": "resource_reference"
+    }
+  ],
+  "placement_configurations": [
+    {
+      "name": "default-placement",
+      "qos_configurations": [
+        "default-qos"
+      ],
+      "storage_class": {
+        "name": "flasharray-x",
+        "resource_type": "storage-classes"
+      },
+      "targets": [
+        {
+          "id": "{{ parameters.placement_target_parameter.id }}",
+          "name": "{{ parameters.placement_target_parameter.name }}",
+          "resource_type": "{{ parameters.placement_target_parameter.resource_type }}"
+        }
+      ]
+    }
+  ],
+  "platform_features": [
+    "fa_block"
+  ],
+  "qos_configurations": [
+    {
+      "iops_limit": "5000",
+      "name": "default-qos",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}"
+        }
+      ]
+    }
+  ],
+  "revision": 5,
+  "type": 43,
+  "volume_configurations": [
+    {
+      "count": "1",
+      "name": "datastore",
+      "naming_patterns": [
+        {
+          "template": "{{functions.left(workload.name, 25)}}-{{functions.left(workload.configuration.name, 25)}}-{{functions.pad_left(workload.configuration.index, 4)}}"
+        }
+      ],
+      "placement_configurations": [
+        "default-placement"
+      ],
+      "provisioned_size": "1073741824"
+    }
+  ],
+  "workload_type": "VDI"
+}

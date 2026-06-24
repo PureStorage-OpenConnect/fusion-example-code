@@ -1,0 +1,31 @@
+---
+# Define one or more workloads under the workloads list. Each entry is
+# provisioned in order. (A single legacy `workload:` mapping is also still
+# accepted for backward compatibility.)
+workloads:
+  - name: <workload-name>
+    preset: <preset-name>
+    context: <array-name-of-where-to-place-the-workload>
+    host: <host-name-to-connect-the-workload-to>
+
+    parameters:
+      # Resource reference parameters must provie both name and resource_type
+      # If resource reference is pointing to an array (e.g. for replication target), then resource_type is remote-arrays
+      - name: <resource-reference-parameter>
+        value:
+          resource_reference:
+            name: <name-of-array>
+            resource_type: remote-arrays
+      - name: <string-parameter>
+        value:
+          string: <string-parameter-value>
+      # If the parameter is for size, then it will be in bytes.
+      - name: <integer-parameter>
+        value:
+          integer: <integer-parameter-value>
+
+  # Additional workloads follow the same shape:
+  - name: <another-workload-name>
+    preset: <preset-name>
+    context: <array-name-of-where-to-place-the-workload>
+    host: <host-name-to-connect-the-workload-to>

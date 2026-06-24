@@ -1,0 +1,36 @@
+# array_config.yml defines configuration that is applied to the fleet. Each
+# top-level section is keyed by a topology-group name; the config under a key
+# is applied to every array in that topology group. The values below show the
+# shape of each entry.
+
+# DNS configuration. Keyed by topology-group. Each group holds a list of DNS
+# configs.
+dns:
+  <topology-group>:
+    - service: "file"                  # service this DNS config applies to (e.g. "file", "management")
+      domain: "<search-domain>"        # DNS search domain, e.g. "us-west.acme.com"
+      name: "<dns-config-name>"        # name of the DNS configuration
+      nameservers:
+        - "<nameserver-ip>"            # one or more nameserver IP addresses
+
+# NTP configuration. Keyed by topology-group. Each group lists its NTP servers.
+ntp:
+  <topology-group>:
+    servers:
+      - "<ntp-server>"                 # one or more NTP server hostnames/IPs
+
+# Syslog configuration. Keyed by topology-group. Each group holds a list of
+# syslog server configs.
+syslog:
+  <topology-group>:
+    - name: "<syslog-config-name>"     # name of the syslog configuration
+      address: "<syslog-server>"       # syslog server hostname or IP
+      port: <port>                     # destination port, e.g. 1000
+      protocol: "<protocol>"           # transport protocol: "tcp" or "udp"
+
+# Host definitions. Keyed by topology-group. Each group holds a list of hosts.
+hosts:
+  <topology-group>:
+    - name: "<host-name>"              # host name, e.g. "oracle-dc1"
+      personality: ""                  # host personality, e.g. "esxi" (empty string for none)
+      iqn: "<host-iqn>"                # iSCSI qualified name of the host initiator
